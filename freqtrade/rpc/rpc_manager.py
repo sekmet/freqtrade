@@ -9,7 +9,7 @@ from freqtrade.rpc import RPC, RPCMessageType
 logger = logging.getLogger(__name__)
 
 
-class RPCManager(object):
+class RPCManager:
     """
     Class to manage RPC objects (Telegram, Slack, ...)
     """
@@ -18,7 +18,7 @@ class RPCManager(object):
         self.registered_modules: List[RPC] = []
 
         # Enable telegram
-        if freqtrade.config['telegram'].get('enabled', False):
+        if freqtrade.config.get('telegram', {}).get('enabled', False):
             logger.info('Enabling rpc.telegram ...')
             from freqtrade.rpc.telegram import Telegram
             self.registered_modules.append(Telegram(freqtrade))
@@ -56,10 +56,13 @@ class RPCManager(object):
         logger.info('Sending rpc message: %s', msg)
         for mod in self.registered_modules:
             logger.debug('Forwarding message to rpc.%s', mod.name)
-            mod.send_msg(msg)
+            try:
+                mod.send_msg(msg)
+            except NotImplementedError:
+                logger.error(f"Message type {msg['type']} not implemented by handler {mod.name}.")
 
-    def startup_messages(self, config, pairlist) -> None:
-        if config.get('dry_run', False):
+    def startup_messages(self, config: Dict[str, Any], pairlist) -> None:
+        if config['dry_run']:
             self.send_msg({
                 'type': RPCMessageType.WARNING_NOTIFICATION,
                 'status': 'Dry run is enabled. All trades are simulated.'
@@ -69,7 +72,7 @@ class RPCManager(object):
         minimal_roi = config['minimal_roi']
         stoploss = config['stoploss']
         trailing_stop = config['trailing_stop']
-        ticker_interval = config['ticker_interval']
+        timeframe = config['timeframe']
         exchange_name = config['exchange']['name']
         strategy_name = config.get('strategy', '')
         self.send_msg({
@@ -78,7 +81,7 @@ class RPCManager(object):
                       f'*Stake per trade:* `{stake_amount} {stake_currency}`\n'
                       f'*Minimum ROI:* `{minimal_roi}`\n'
                       f'*{"Trailing " if trailing_stop else ""}Stoploss:* `{stoploss}`\n'
-                      f'*Ticker Interval:* `{ticker_interval}`\n'
+                      f'*Timeframe:* `{timeframe}`\n'
                       f'*Strategy:* `{strategy_name}`'
         })
         self.send_msg({

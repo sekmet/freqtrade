@@ -1,164 +1,115 @@
-# Analyzing bot data
+# Analyzing bot data with Jupyter notebooks  
 
-After performing backtests, or after running the bot for some time, it will be interesting to analyze the results your bot generated.
+You can analyze the results of backtests and trading history easily using Jupyter notebooks. Sample notebooks are located at `user_data/notebooks/`.  
 
-A good way for this is using Jupyter (notebook or lab) - which provides an interactive environment to analyze the data.
+## Pro tips  
 
-The following helpers will help you loading the data into Pandas DataFrames, and may also give you some starting points in analyzing the results.
+* See [jupyter.org](https://jupyter.org/documentation) for usage instructions.
+* Don't forget to start a Jupyter notebook server from within your conda or venv environment or use [nb_conda_kernels](https://github.com/Anaconda-Platform/nb_conda_kernels)*
+* Copy the example notebook before use so your changes don't get clobbered with the next freqtrade update.
 
-## Strategy development problem analysis
+### Using virtual environment with system-wide Jupyter installation
 
-Debugging a strategy (are there no buy signals, ...) can be very time-consuming.
-FreqTrade tries to help you by exposing a few helper-functions, which can be very handy.
+Sometimes it can be desired to use a system-wide installation of Jupyter notebook, and use a jupyter kernel from the virtual environment.
+This prevents you from installing the full jupyter suite multiple times per system, and provides an easy way to switch between tasks (freqtrade / other analytics tasks).
 
-It's recommended using Juptyer Notebooks for analysis, since it offers a dynamic way to rerun certain parts of the code.
+For this to work, first activate your virtual environment and run the following commands:
 
-The following is a full code-snippet, which will be explained by both comments, and step by step below.
+``` bash
+# Activate virtual environment
+source .env/bin/activate
+
+pip install ipykernel
+ipython kernel install --user --name=freqtrade
+# Restart jupyter (lab / notebook)
+# select kernel "freqtrade" in the notebook
+```
+
+!!! Note
+    This section is provided for completeness, the Freqtrade Team won't provide full support for problems with this setup and will recommend to install Jupyter in the virtual environment directly, as that is the easiest way to get jupyter notebooks up and running. For help with this setup please refer to the [Project Jupyter](https://jupyter.org/) [documentation](https://jupyter.org/documentation) or [help channels](https://jupyter.org/community).
+
+    
+## Fine print  
+
+Some tasks don't work especially well in notebooks. For example, anything using asynchronous execution is a problem for Jupyter. Also, freqtrade's primary entry point is the shell cli, so using pure python in a notebook bypasses arguments that provide required objects and parameters to helper functions. You may need to set those values or create expected objects manually.
+
+## Recommended workflow  
+
+| Task | Tool |  
+  --- | ---  
+Bot operations | CLI  
+Repetitive tasks | Shell scripts
+Data analysis & visualization | Notebook  
+
+1. Use the CLI to
+    * download historical data
+    * run a backtest
+    * run with real-time data
+    * export results  
+
+1. Collect these actions in shell scripts
+    * save complicated commands with arguments
+    * execute multi-step operations  
+    * automate testing strategies and preparing data for analysis
+
+1. Use a notebook to
+    * visualize data
+    * munge and plot to generate insights
+
+## Example utility snippets  
+
+### Change directory to root  
+
+Jupyter notebooks execute from the notebook directory. The following snippet searches for the project root, so relative paths remain consistent.
 
 ```python
-# Some necessary imports
+import os
 from pathlib import Path
 
-from freqtrade.data.history import load_pair_history
-from freqtrade.resolvers import StrategyResolver
-# Define some constants
-ticker_interval = "5m"
-
-# Name of the strategy class
-strategyname = 'Awesomestrategy'
-# Location of the strategy
-strategy_location = '../xmatt/strategies'
-# Location of the data
-data_location = '../freqtrade/user_data/data/binance/'
-# Only use one pair here
-pair = "XRP_ETH"
-
-### End constants
-
-# Load data
-bt_data = load_pair_history(datadir=Path(data_location),
-                            ticker_interval = ticker_interval,
-                            pair=pair)
-print(len(bt_data))
-
-### Start strategy reload
-# Load strategy - best done in a new cell
-# Rerun each time the strategy-file is changed.
-strategy = StrategyResolver({'strategy': strategyname,
-                            'user_data_dir': Path.cwd(),
-                            'strategy_path': location}).strategy
-
-# Run strategy (just like in backtesting)
-df = strategy.analyze_ticker(bt_data, {'pair': pair})
-print(f"Generated {df['buy'].sum()} buy signals")
-
-# Reindex data to be "nicer" and show data
-data = df.set_index('date', drop=True)
-data.tail()
-
+# Change directory
+# Modify this cell to insure that the output shows the correct path.
+# Define all paths relative to the project root shown in the cell output
+project_root = "somedir/freqtrade"
+i=0
+try:
+    os.chdirdir(project_root)
+    assert Path('LICENSE').is_file()
+except:
+    while i<4 and (not Path('LICENSE').is_file()):
+        os.chdir(Path(Path.cwd(), '../'))
+        i+=1
+    project_root = Path.cwd()
+print(Path.cwd())
 ```
 
-### Explanation
+### Load multiple configuration files
 
-#### Imports and constant definition
+This option can be useful to inspect the results of passing in multiple configs.
+This will also run through the whole Configuration initialization, so the configuration is completely initialized to be passed to other methods.
 
 ``` python
-# Some necessary imports
-from pathlib import Path
+import json
+from freqtrade.configuration import Configuration
 
-from freqtrade.data.history import load_pair_history
-from freqtrade.resolvers import StrategyResolver
-# Define some constants
-ticker_interval = "5m"
+# Load config from multiple files
+config = Configuration.from_files(["config1.json", "config2.json"])
 
-# Name of the strategy class
-strategyname = 'Awesomestrategy'
-# Location of the strategy
-strategy_location = 'user_data/strategies'
-# Location of the data
-data_location = 'user_data/data/binance'
-# Only use one pair here
-pair = "XRP_ETH"
+# Show the config in memory
+print(json.dumps(config['original_config'], indent=2))
 ```
 
-This first section imports necessary modules, and defines some constants you'll probably need to adjust for your case.
+For Interactive environments, have an additional configuration specifying `user_data_dir` and pass this in last, so you don't have to change directories while running the bot.
+Best avoid relative paths, since this starts at the storage location of the jupyter notebook, unless the directory is changed.
 
-#### Load candles
-
-``` python
-# Load data
-bt_data = load_pair_history(datadir=Path(data_location),
-                            ticker_interval = ticker_interval,
-                            pair=pair)
-print(len(bt_data))
+``` json
+{
+    "user_data_dir": "~/.freqtrade/"
+}
 ```
 
-This second section loads the historic data and prints the amount of candles in the DataFrame.
-You can also inspect this dataframe by using `bt_data.head()` or `bt_data.tail()`.
+### Further Data analysis documentation
 
-#### Run strategy and analyze results
-
-Now, it's time to load and run your strategy.
-For this, I recommend using a new cell in your notebook, since you'll want to repeat this until you're satisfied with your strategy.
-
-``` python
-# Load strategy - best done in a new cell
-# Needs to be ran each time the strategy-file is changed.
-strategy = StrategyResolver({'strategy': strategyname,
-                            'user_data_dir': Path.cwd(),
-                            'strategy_path': location}).strategy
-
-# Run strategy (just like in backtesting)
-df = strategy.analyze_ticker(bt_data, {'pair': pair})
-print(f"Generated {df['buy'].sum()} buy signals")
-
-# Reindex data to be "nicer" and show data
-data = df.set_index('date', drop=True)
-data.tail()
-```
-
-The code snippet loads and analyzes the strategy, calculates and prints the number of buy signals.
-
-The last 2 lines serve to analyze the dataframe in detail.
-This can be important if your strategy did not generate any buy signals.
-Note that using `data.head()` would also work, however this is misleading since most indicators have some "startup" time at the start of a backtested dataframe.
-
-There can be many things wrong, some signs to look for are:
-
-* Columns with NaN values at the end of the dataframe
-* Columns used in `crossed*()` functions with completely different units
-
-## Backtesting
-
-To analyze your backtest results, you can [export the trades](#exporting-trades-to-file).
-You can then load the trades to perform further analysis.
-
-Freqtrade provides the `load_backtest_data()` helper function to easily load the backtest results, which takes the path to the the backtest-results file as parameter.
-
-``` python
-from freqtrade.data.btanalysis import load_backtest_data
-df = load_backtest_data("user_data/backtest-result.json")
-
-# Show value-counts per pair
-df.groupby("pair")["sell_reason"].value_counts()
-
-```
-
-This will allow you to drill deeper into your backtest results, and perform analysis which otherwise would make the regular backtest-output very difficult to digest due to information overload.
-
-If you have some ideas for interesting / helpful backtest data analysis ideas, please submit a Pull Request so the community can benefit from it.
-
-## Live data
-
-To analyze the trades your bot generated, you can load them to a DataFrame as follows:
-
-``` python
-from freqtrade.data.btanalysis import load_trades_from_db
-
-df = load_trades_from_db("sqlite:///tradesv3.sqlite")
-
-df.groupby("pair")["sell_reason"].value_counts()
-
-```
+* [Strategy debugging](strategy_analysis_example.md) - also available as Jupyter notebook (`user_data/notebooks/strategy_analysis_example.ipynb`)
+* [Plotting](plotting.md)
 
 Feel free to submit an issue or Pull Request enhancing this document if you would like to share ideas on how to best analyze the data.
